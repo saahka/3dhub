@@ -307,6 +307,7 @@ function createHouse() {
     addBush(-houseW/2 - 0.6, -1.5, 0.9); addBush(-houseW/2 - 0.6, 1.5, 0.9);
     addBush(houseW/2 + 0.6, -1.5, 0.9);
     addBush(-2.0, -houseD/2 - 0.5, 1.0); addBush(2.0, -houseD/2 - 0.5, 1.0);
+    g.scale.setScalar(0.15);
     return g;
 }
 
@@ -550,6 +551,253 @@ CUSTOM.building = createBuilding.toString();
 CUSTOM.tiles = createTiles.toString();
 CUSTOM.wall = createWall.toString();
 // ================= /НОВЫЕ МОДЕЛИ =================
+ // =============== LAMP ===============
+function createLamp() {
+  const g = new THREE.Group();
+
+  // --- процедурные текстуры ---
+  function createProceduralTexture(type, colorHex) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 512;
+    const ctx = c.getContext("2d");
+    const hex = "#" + colorHex.toString(16).padStart(6, "0");
+    ctx.fillStyle = hex;
+    ctx.fillRect(0, 0, 512, 512);
+    if (type === 'brushed-metal') {
+      for (let i = 0; i < 800; i++) {
+        ctx.globalAlpha = 0.02 + Math.random() * 0.06;
+        ctx.fillStyle = Math.random() > 0.5 ? "#ffffff" : "#000000";
+        ctx.fillRect(0, Math.random() * 512, 512, 0.5 + Math.random() * 1.5);
+      }
+      const grad = ctx.createLinearGradient(0, 0, 0, 512);
+      grad.addColorStop(0, "rgba(255,255,255,0.05)");
+      grad.addColorStop(0.5, "rgba(255,255,255,0)");
+      grad.addColorStop(1, "rgba(0,0,0,0.1)");
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, 512, 512);
+    } else if (type === 'fabric') {
+      ctx.globalAlpha = 0.06; ctx.strokeStyle = "#000000"; ctx.lineWidth = 1;
+      for (let i = 0; i < 512; i += 3) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 512); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(512, i); ctx.stroke();
+      }
+      for (let i = 0; i < 2000; i++) {
+        ctx.globalAlpha = 0.03;
+        ctx.fillStyle = Math.random() > 0.5 ? "#ffffff" : "#000000";
+        ctx.fillRect(Math.random() * 512, Math.random() * 512, 1, 1);
+      }
+    }
+    ctx.globalAlpha = 1.0;
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  const matBlackMetal = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, map: createProceduralTexture('brushed-metal', 0x1a1a1a), roughness: 0.4, metalness: 0.8 });
+  const matBrass = new THREE.MeshStandardMaterial({ color: 0xd4af37, map: createProceduralTexture('brushed-metal', 0xd4af37), roughness: 0.25, metalness: 0.95 });
+  const matFabricOuter = new THREE.MeshStandardMaterial({ color: 0x2c3e50, map: createProceduralTexture('fabric', 0x2c3e50), roughness: 0.95, metalness: 0.0, side: THREE.FrontSide });
+  const matFabricInner = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3, metalness: 0.8, side: THREE.BackSide });
+  const matBulbGlass = new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffaa33, emissiveIntensity: 2.0, roughness: 0.1, metalness: 0.0, transparent: true, opacity: 0.9 });
+  const matBulbMetal = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.3, metalness: 0.9 });
+
+  // 1. Основание
+  const baseBottom = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.1, 48), matBlackMetal);
+  baseBottom.position.y = 0.05; baseBottom.castShadow = baseBottom.receiveShadow = true; g.add(baseBottom);
+  const baseTop = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.08, 48), matBlackMetal);
+  baseTop.position.y = 0.14; baseTop.castShadow = true; g.add(baseTop);
+  const baseRing = new THREE.Mesh(new THREE.TorusGeometry(0.375, 0.015, 16, 64), matBrass);
+  baseRing.rotation.x = Math.PI / 2; baseRing.position.y = 0.18; g.add(baseRing);
+
+  // 2. Стойка
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.1, 32), matBlackMetal);
+  stem.position.y = 0.73; stem.castShadow = true; g.add(stem);
+  const stemJoint = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.08, 32), matBrass);
+  stemJoint.position.y = 1.0; g.add(stemJoint);
+
+  // 3. Патрон + лампочка
+  const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.18, 32), matBrass);
+  socket.position.y = 1.35; g.add(socket);
+  const bulbBase = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.08, 24), matBulbMetal);
+  bulbBase.position.y = 1.46; g.add(bulbBase);
+  const bulbGlass = new THREE.Mesh(new THREE.SphereGeometry(0.13, 32, 32), matBulbGlass);
+  bulbGlass.position.y = 1.56; g.add(bulbGlass);
+
+  // 4. Выключатель-цепочка
+  const pullChainGroup = new THREE.Group();
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.06, 1.35, 0),
+    new THREE.Vector3(0.08, 1.20, 0.02),
+    new THREE.Vector3(0.05, 1.05, 0.05),
+    new THREE.Vector3(0.07, 0.90, 0.03)
+  ]);
+  const chain = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.008, 8, false), matBrass);
+  const chainBall = new THREE.Mesh(new THREE.SphereGeometry(0.025, 16, 16), matBrass);
+  chainBall.position.copy(curve.getPoint(1));
+  pullChainGroup.add(chain); pullChainGroup.add(chainBall);
+  g.add(pullChainGroup);
+
+  // 5. Абажур
+  const shadeRadiusTop = 0.28, shadeRadiusBottom = 0.65, shadeHeight = 0.65, shadeY = 1.65;
+  const shadeOuter = new THREE.Mesh(new THREE.CylinderGeometry(shadeRadiusTop, shadeRadiusBottom, shadeHeight, 48, 1, true), matFabricOuter);
+  shadeOuter.position.y = shadeY; shadeOuter.castShadow = true; shadeOuter.receiveShadow = true; g.add(shadeOuter);
+  const shadeInner = new THREE.Mesh(new THREE.CylinderGeometry(shadeRadiusTop - 0.005, shadeRadiusBottom - 0.005, shadeHeight - 0.01, 48, 1, true), matFabricInner);
+  shadeInner.position.y = shadeY; g.add(shadeInner);
+  const rimTop = new THREE.Mesh(new THREE.TorusGeometry(shadeRadiusTop, 0.015, 16, 64), matBrass);
+  rimTop.rotation.x = Math.PI / 2; rimTop.position.y = shadeY + shadeHeight / 2; g.add(rimTop);
+  const rimBottom = new THREE.Mesh(new THREE.TorusGeometry(shadeRadiusBottom, 0.02, 16, 64), matBrass);
+  rimBottom.rotation.x = Math.PI / 2; rimBottom.position.y = shadeY - shadeHeight / 2; g.add(rimBottom);
+
+  // 6. Провод
+  const cordCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.3, 0.05, 0),
+    new THREE.Vector3(-0.6, 0.02, 0.1),
+    new THREE.Vector3(-1.0, 0.01, 0.3),
+    new THREE.Vector3(-1.5, 0.01, 0.2)
+  ]);
+  const cord = new THREE.Mesh(new THREE.TubeGeometry(cordCurve, 32, 0.025, 12, false), matBlackMetal);
+  cord.receiveShadow = true; g.add(cord);
+
+  // ВАЖНО: убираем PointLight/SpotLight — они конфликтуют с освещением превью.
+  // Свечение колбы даёт emissive, этого достаточно для thumbnail.
+
+  return g;
+}
+CUSTOM.lamp = createLamp.toString();
+// =============== /LAMP ===============
+ // =============== LADDER ===============
+function createLadder() {
+  const g = new THREE.Group();
+
+  // --- текстура дерева ---
+  function createWoodTexture() {
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#b88a5c'; ctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < 500; i++) {
+      const x = Math.random() * size;
+      const width = 1 + Math.random() * 4;
+      ctx.beginPath(); ctx.moveTo(x, 0);
+      for (let y = 0; y <= size; y += 12) {
+        ctx.lineTo(x + Math.sin(y * 0.02 + i * 0.3) * 5, y);
+      }
+      ctx.strokeStyle = 'rgba(60, 30, 10, ' + (0.05 + Math.random() * 0.15) + ')';
+      ctx.lineWidth = width; ctx.stroke();
+    }
+    for (let i = 0; i < 80; i++) {
+      const x = Math.random() * size, y = Math.random() * size;
+      const r = 2 + Math.random() * 8;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(50, 20, 5, ' + (0.1 + Math.random() * 0.3) + ')';
+      ctx.fill();
+    }
+    const map = new THREE.CanvasTexture(canvas);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.wrapS = map.wrapT = THREE.RepeatWrapping;
+    map.repeat.set(1, 6);
+
+    const rCanvas = document.createElement('canvas');
+    rCanvas.width = size; rCanvas.height = size;
+    const rCtx = rCanvas.getContext('2d');
+    rCtx.drawImage(canvas, 0, 0);
+    const imgData = rCtx.getImageData(0, 0, size, size);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = (data[i] + data[i+1] + data[i+2]) / 3;
+      const val = 255 - (gray - 80) * 0.7;
+      data[i] = data[i+1] = data[i+2] = Math.max(50, Math.min(255, val));
+    }
+    rCtx.putImageData(imgData, 0, 0);
+    const roughnessMap = new THREE.CanvasTexture(rCanvas);
+    roughnessMap.wrapS = roughnessMap.wrapT = THREE.RepeatWrapping;
+    roughnessMap.repeat.set(1, 6);
+    return { map, roughnessMap };
+  }
+
+  const woodTextures = createWoodTexture();
+  const woodMaterial = new THREE.MeshStandardMaterial({ map: woodTextures.map, roughnessMap: woodTextures.roughnessMap, roughness: 0.8, metalness: 0.0, color: 0xffffff });
+  const rubberMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.95, metalness: 0.1 });
+  const metalMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.85 });
+  const rivetMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.3, metalness: 0.9 });
+
+  const railWidth = 0.10, railDepth = 0.05, railHeight = 3.6;
+  const rungRadius = 0.035, rungLength = 1.12;
+
+  function createRail(x, z) {
+    const geom = new THREE.CapsuleGeometry(railWidth / 2, railHeight - railWidth, 4, 16);
+    const mesh = new THREE.Mesh(geom, woodMaterial);
+    mesh.scale.set(1, 1, railDepth / (railWidth / 2));
+    mesh.position.set(x, railHeight / 2, z);
+    mesh.castShadow = mesh.receiveShadow = true;
+    g.add(mesh);
+  }
+
+  function createRung(y) {
+    const geom = new THREE.CylinderGeometry(rungRadius, rungRadius, rungLength, 16);
+    const mesh = new THREE.Mesh(geom, woodMaterial);
+    mesh.rotation.z = Math.PI / 2;
+    mesh.position.set(0, y, 0);
+    mesh.castShadow = mesh.receiveShadow = true;
+    g.add(mesh);
+    const ferruleGeom = new THREE.CylinderGeometry(rungRadius + 0.004, rungRadius + 0.004, 0.035, 12);
+    const ferruleL = new THREE.Mesh(ferruleGeom, metalMaterial);
+    ferruleL.rotation.z = Math.PI / 2;
+    ferruleL.position.set(-0.5 + 0.015, y, 0);
+    ferruleL.castShadow = true; g.add(ferruleL);
+    const ferruleR = ferruleL.clone();
+    ferruleR.position.set(0.5 - 0.015, y, 0); g.add(ferruleR);
+  }
+
+  function addReinforcementBand(yPos) {
+    const bandGeom = new THREE.BoxGeometry(0.12, 0.07, 0.065);
+    const bandL = new THREE.Mesh(bandGeom, metalMaterial);
+    bandL.position.set(-0.5, yPos, 0); bandL.castShadow = bandL.receiveShadow = true; g.add(bandL);
+    const bandR = bandL.clone(); bandR.position.set(0.5, yPos, 0); g.add(bandR);
+    const rivetGeom = new THREE.CylinderGeometry(0.007, 0.007, 0.075, 8);
+    const rivetPositions = [[-0.035, 0.02], [0.035, 0.02], [-0.035, -0.02], [0.035, -0.02]];
+    rivetPositions.forEach(pos => {
+      const rivetL = new THREE.Mesh(rivetGeom, rivetMaterial);
+      rivetL.rotation.x = Math.PI / 2;
+      rivetL.position.set(-0.5, yPos + pos[1], pos[0]);
+      rivetL.castShadow = true; g.add(rivetL);
+      const rivetR = rivetL.clone();
+      rivetR.position.set(0.5, yPos + pos[1], pos[0]); g.add(rivetR);
+    });
+  }
+
+  function createFoot(x, z) {
+    const geom = new THREE.CylinderGeometry(railWidth / 2 + 0.005, railWidth / 2 + 0.015, 0.06, 12);
+    const mesh = new THREE.Mesh(geom, rubberMaterial);
+    mesh.scale.set(1, 1, railDepth / (railWidth / 2));
+    mesh.position.set(x, 0.03, z);
+    mesh.castShadow = mesh.receiveShadow = true;
+    g.add(mesh);
+  }
+
+  function createCap(x, z) {
+    const geom = new THREE.SphereGeometry(railWidth / 2, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    const mesh = new THREE.Mesh(geom, woodMaterial);
+    mesh.scale.set(1, 1, railDepth / (railWidth / 2));
+    mesh.position.set(x, railHeight, z);
+    mesh.castShadow = true; g.add(mesh);
+  }
+
+  createRail(-0.5, 0);
+  createRail(0.5, 0);
+  const rungCount = 11, startY = 0.3, endY = railHeight - 0.3;
+  const stepY = (endY - startY) / (rungCount - 1);
+  for (let i = 0; i < rungCount; i++) createRung(startY + i * stepY);
+  addReinforcementBand(0.15);
+  addReinforcementBand(railHeight - 0.15);
+  createFoot(-0.5, 0);
+  createFoot(0.5, 0);
+  createCap(-0.5, 0);
+  createCap(0.5, 0);
+  return g;
+}
+CUSTOM.ladder = createLadder.toString();
+// =============== /LADDER ===============
 function generate(type,root='g'){if(CUSTOM[type])return CUSTOM[type];
  const lines=['function create'+type[0].toUpperCase()+type.slice(1)+'() {','  const g = new THREE.Group();',
 '  // Self-contained material texture: no external image files required.',
